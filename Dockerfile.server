@@ -1,0 +1,42 @@
+# ================================================================
+#  SafeChat Server — slim multi-stage Dockerfile
+#
+#  WHY slim instead of alpine?
+#  Alpine has NO pre-built wheels for scikit-learn/scipy/numpy.
+#  It must compile from source = 7+ min build, max CPU heat.
+#  python:3.10-slim uses pre-built binary wheels = ~60s build.
+#  Final image size: ~230MB (vs ~150MB alpine, not worth the pain)
+# ================================================================
+
+# ── Stage 1: Install deps ─────────────────────────────────────────
+FROM python:3.10-slim AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY requirements.txt .
+
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+# ── Stage 2: Lean runtime ─────────────────────────────────────────
+FROM python:3.10-slim AS runtime
+
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+COPY server/server.py ./server.py
+RUN mkdir -p /app/models && useradd -r -s /bin/false safechat
+
+USER safechat
+EXPOSE 12345
+
+ENV SERVER_HOST=0.0.0.0   \
+    SERVER_PORT=12345      \
+    MODELS_DIR=/app/models \
+    PYTHONUNBUFFERED=1     \
+    PYTHONDONTWRITEBYTECODE=1
+
+CMD ["python", "-u", "server.py"]

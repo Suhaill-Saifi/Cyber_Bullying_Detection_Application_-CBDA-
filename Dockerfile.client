@@ -1,0 +1,33 @@
+# ================================================================
+#  SafeChat CLI Client — slim multi-stage Dockerfile
+# ================================================================
+
+FROM python:3.10-slim AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY requirements.txt .
+
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+FROM python:3.10-slim AS runtime
+
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+COPY client/client.py ./client.py
+RUN mkdir -p /app/models && useradd -r -s /bin/false safechat
+
+USER safechat
+
+ENV SERVER_HOST=server    \
+    SERVER_PORT=12345     \
+    MODELS_DIR=/app/models \
+    PYTHONUNBUFFERED=1    \
+    PYTHONDONTWRITEBYTECODE=1
+
+CMD ["python", "-u", "client.py"]
